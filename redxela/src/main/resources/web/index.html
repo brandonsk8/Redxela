@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>REDXela · Centro de distribución</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+<!--
+  REDXela — Interfaz del simulador (Sistemas Operativos 2, USAC CUNOC 2026).
+  La página recibe el estado completo del servidor por Server-Sent Events (/api/stream)
+  y lo vuelve a dibujar; las acciones se envían con fetch() a la API REST.
+-->
+<header class="barra">
+  <div class="marca">
+    <span class="logo" aria-hidden="true"></span>
+    <div>
+      <h1>REDXela</h1>
+      <p>Centro de distribución · simulación en vivo</p>
+    </div>
+  </div>
+
+  <div class="controles" aria-label="Configuración de la simulación">
+    <label class="campo">
+      <span>Política de atención</span>
+      <select id="cfg-politica"></select>
+    </label>
+    <label class="interruptor">
+      <input type="checkbox" id="cfg-prevencion">
+      <span>Prevención de interbloqueo</span>
+    </label>
+    <label class="interruptor">
+      <input type="checkbox" id="cfg-generador">
+      <span>Generador de pedidos</span>
+    </label>
+    <label class="campo corto">
+      <span>Pedidos / hora</span>
+      <input type="number" id="cfg-tasa" min="1" max="300" step="1">
+    </label>
+    <label class="interruptor">
+      <input type="checkbox" id="cfg-reposicion">
+      <span>Reposición automática</span>
+    </label>
+    <label class="campo corto">
+      <span>Velocidad</span>
+      <select id="cfg-velocidad">
+        <option value="2">0.5×</option>
+        <option value="1">1×</option>
+        <option value="0.5">2×</option>
+        <option value="0.25">4×</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="conexion" id="conexion" role="status">Conectando…</div>
+</header>
+
+<section class="indicadores" id="indicadores" aria-label="Indicadores generales"></section>
+
+<section class="alerta-conflicto" id="alerta-conflicto" hidden aria-live="assertive"></section>
+
+<nav class="pestanas" role="tablist">
+  <button role="tab" data-tab="operacion" aria-selected="true">Operación</button>
+  <button role="tab" data-tab="registrar">Registrar</button>
+  <button role="tab" data-tab="almacen">Recepción e inventario</button>
+  <button role="tab" data-tab="conflictos">Conflictos <b id="badge-conflictos" hidden></b></button>
+  <button role="tab" data-tab="estadisticas">Estadísticas</button>
+  <button role="tab" data-tab="bitacora">Bitácora</button>
+</nav>
+
+<main>
+  <!-- ============================ OPERACIÓN ============================ -->
+  <section class="panel" id="tab-operacion" role="tabpanel">
+    <div class="rejilla-operacion">
+      <div>
+        <h2>Recursos compartidos</h2>
+        <p class="ayuda">Cada casilla es una unidad física. Muestra quién la usa y quién espera por ella.</p>
+        <div id="recursos" class="recursos"></div>
+      </div>
+      <div class="columna">
+        <div>
+          <h2>En proceso <small id="cuenta-proceso"></small></h2>
+          <div id="en-proceso" class="lista-proceso"></div>
+        </div>
+        <div>
+          <h2>Lista de espera <small id="cuenta-espera"></small></h2>
+          <p class="ayuda" id="criterio-espera"></p>
+          <div class="tabla-scroll">
+            <table class="tabla" id="tabla-espera">
+              <thead><tr>
+                <th>#</th><th>Pedido</th><th>Cliente</th><th>Nivel</th><th>Mercancía</th>
+                <th class="num">Unid.</th><th class="num">Espera</th><th class="num">Puntaje</th><th>Situación</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <h2>Últimos completados</h2>
+          <div class="tabla-scroll corta">
+            <table class="tabla" id="tabla-completados">
+              <thead><tr><th>Pedido</th><th>Cliente</th><th>Nivel</th><th class="num">Unid.</th>
+                <th class="num">Espera</th><th class="num">Proceso</th><th>Plazo</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ REGISTRAR ============================ -->
+  <section class="panel" id="tab-registrar" role="tabpanel" hidden>
+    <div class="rejilla-formularios">
+      <form id="form-pedido" class="formulario">
+        <h2>Nuevo pedido</h2>
+        <fieldset class="segmentado">
+          <legend>Cliente</legend>
+          <label><input type="radio" name="tipoCliente" value="existente" checked> Cuenta existente</label>
+          <label><input type="radio" name="tipoCliente" value="nuevo"> Crear cuenta nueva</label>
+        </fieldset>
+        <div id="bloque-existente">
+          <label class="campo"><span>Cuenta</span><select name="clienteId" id="sel-cliente"></select></label>
+        </div>
+        <div id="bloque-nuevo" hidden>
+          <label class="campo"><span>Nombre</span><input name="nombre" autocomplete="off"></label>
+          <label class="campo"><span>Correo</span><input name="correo" type="email" autocomplete="off"></label>
+          <label class="campo"><span>Nivel de servicio</span><select name="nivel" class="sel-nivel"></select></label>
+        </div>
+        <div class="lineas">
+          <div class="lineas-encabezado"><span>Producto</span><span>Cantidad</span><span></span></div>
+          <div id="lineas"></div>
+          <button type="button" class="boton secundario" id="agregar-linea">Agregar producto</button>
+        </div>
+        <p class="resumen" id="resumen-pedido"></p>
+        <button class="boton" type="submit">Registrar pedido</button>
+        <p class="mensaje" role="status"></p>
+      </form>
+
+      <form id="form-mercaderia" class="formulario">
+        <h2>Llegada de mercadería</h2>
+        <p class="ayuda">Registra un camión en Recepción. El resto es automático: Recepción descarga y avisa a Inventario por el buffer, Inventario ubica el lote y reevalúa los pedidos que esperaban ese producto.</p>
+        <label class="campo"><span>Producto</span><select name="productoId" id="sel-producto-merc"></select></label>
+        <label class="campo"><span>Unidades recibidas</span><input name="cantidad" type="number" min="1" max="2000" value="80"></label>
+        <label class="campo"><span>Andén asignado</span>
+          <select name="anden"><option value="0">El que asigne el patio</option><option value="1">Andén 1</option><option value="2">Andén 2</option></select>
+        </label>
+        <button class="boton" type="submit">Registrar llegada</button>
+        <p class="mensaje" role="status"></p>
+        <hr>
+        <h3>Ráfaga de camiones</h3>
+        <p class="ayuda">Envía muchos camiones a la vez para que Recepción produzca más rápido de lo que Inventario consume y el buffer se llene.</p>
+        <div class="fila">
+          <input type="number" id="rafaga-n" min="1" max="50" value="15" aria-label="Cantidad de camiones">
+          <button class="boton secundario" type="button" id="btn-rafaga">Enviar ráfaga</button>
+        </div>
+      </form>
+
+      <div class="formulario">
+        <h2>Tipos de mercancía</h2>
+        <p class="ayuda">El nivel de servicio decide cuándo se atiende un pedido; el tipo de mercancía decide qué recursos usa.</p>
+        <div id="tipos-mercancia"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== RECEPCIÓN E INVENTARIO ===================== -->
+  <section class="panel" id="tab-almacen" role="tabpanel" hidden>
+    <h2>Comunicación Recepción → Inventario</h2>
+    <p class="ayuda">Productor-consumidor con buffer acotado y tres semáforos. Ninguna área toca las estructuras de la otra: Recepción solo deposita avisos, Inventario los procesa a su ritmo.</p>
+    <div id="ipc" class="ipc"></div>
+    <div class="fila controles-ipc">
+      <label class="campo corto"><span>Tiempo de Inventario por aviso (ms)</span>
+        <input type="number" id="cfg-retardo" min="0" max="20000" step="250"></label>
+    </div>
+
+    <div class="rejilla-almacen">
+      <div>
+        <h2>Mapa del almacén</h2>
+        <p class="ayuda" id="resumen-almacen"></p>
+        <div id="mapa-almacen" class="mapa"></div>
+        <div id="detalle-lote" class="detalle-lote" aria-live="polite">Toca una ubicación ocupada para ver la tabla de ubicaciones de su lote.</div>
+      </div>
+      <div>
+        <h2>Existencias</h2>
+        <div class="tabla-scroll alta">
+          <table class="tabla" id="tabla-stock">
+            <thead><tr><th>Producto</th><th>Tipo</th><th class="num">Stock</th><th class="num">Lotes</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ CONFLICTOS ============================ -->
+  <section class="panel" id="tab-conflictos" role="tabpanel" hidden>
+    <div class="rejilla-conflictos">
+      <div class="formulario">
+        <h2>Provocar el conflicto</h2>
+        <p class="ayuda">Lanza dos operaciones que piden el mismo par de recursos en orden inverso: un camión de Recepción toma el escáner y luego pide el andén; un pedido de alto valor toma el andén y luego pide el escáner. Una barrera garantiza que ambas tomen su primer recurso antes de pedir el segundo.</p>
+        <label class="campo"><span>Andén en disputa</span>
+          <select id="esc-anden"><option value="1">Andén 1</option><option value="2">Andén 2</option></select></label>
+        <label class="campo"><span>Producto del pedido</span>
+          <select id="esc-producto"></select></label>
+        <button class="boton peligro" type="button" id="btn-provocar">Provocar conflicto</button>
+        <p class="mensaje" role="status" id="msg-provocar"></p>
+        <p class="ayuda">Con la prevención desactivada el mismo conflicto puede aparecer solo, bajo carga, entre Recepción y los pedidos de alto valor.</p>
+      </div>
+      <div>
+        <h2>Historial de conflictos</h2>
+        <div id="historial-conflictos"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ ESTADÍSTICAS ============================ -->
+  <section class="panel" id="tab-estadisticas" role="tabpanel" hidden>
+    <div class="fila entre">
+      <h2>Desempeño en vivo</h2>
+      <button class="boton secundario" type="button" id="btn-reiniciar">Reiniciar estadísticas</button>
+    </div>
+    <div id="estadisticas-generales" class="estadisticas"></div>
+    <div class="rejilla-estadisticas">
+      <div>
+        <h3>Ocupación de recursos</h3>
+        <div id="uso-recursos" class="barras"></div>
+      </div>
+      <div>
+        <h3>Por nivel de servicio</h3>
+        <table class="tabla" id="tabla-niveles">
+          <thead><tr><th>Nivel</th><th class="num">Completados</th><th class="num">Espera prom.</th><th class="num">Espera máx.</th><th class="num">En plazo</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <h3>Por política (lo medido mientras cada una estuvo activa)</h3>
+    <div class="tabla-scroll">
+      <table class="tabla" id="tabla-politicas">
+        <thead><tr><th>Política</th><th class="num">Completados</th><th class="num">Espera prom.</th><th class="num">Espera máx.</th><th class="num">Proceso prom.</th><th class="num">En plazo</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="comparador">
+      <h2>Comparar políticas con la misma carga</h2>
+      <p class="ayuda">Simulación de eventos discretos: genera una sola secuencia de pedidos (misma semilla) y la procesa con cada política, con los mismos recursos y reglas del despachador. Así la comparación es justa.</p>
+      <form id="form-comparar" class="fila">
+        <label class="campo corto"><span>Pedidos</span><input name="pedidos" type="number" value="600" min="10" max="5000"></label>
+        <label class="campo corto"><span>Pedidos / hora</span><input name="tasa" type="number" value="50" min="1" max="600"></label>
+        <label class="campo corto"><span>Semilla</span><input name="semilla" type="number" value="2026"></label>
+        <button class="boton" type="submit">Comparar</button>
+      </form>
+      <div id="resultado-comparar"></div>
+    </div>
+  </section>
+
+  <!-- ============================ BITÁCORA ============================ -->
+  <section class="panel" id="tab-bitacora" role="tabpanel" hidden>
+    <div class="fila entre">
+      <h2>Bitácora de eventos</h2>
+      <div class="filtros" id="filtros-bitacora">
+        <label><input type="checkbox" value="INFO" checked> Información</label>
+        <label><input type="checkbox" value="OK" checked> Éxito</label>
+        <label><input type="checkbox" value="AVISO" checked> Avisos</label>
+        <label><input type="checkbox" value="IPC" checked> Comunicación</label>
+        <label><input type="checkbox" value="CONFLICTO" checked> Conflictos</label>
+        <label><input type="checkbox" value="ERROR" checked> Errores</label>
+      </div>
+    </div>
+    <ol id="bitacora" class="bitacora"></ol>
+  </section>
+</main>
+
+<footer class="pie">Sistemas Operativos 2 · USAC CUNOC · Segundo semestre 2026 · Brandon Gustavo Güinac Román (201931217)</footer>
+
+<div class="aviso-flotante" id="toast" role="status" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>

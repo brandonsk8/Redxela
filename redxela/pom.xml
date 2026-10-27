@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  REDXela - Simulador de Centro de Distribución
+  Proyecto Final - Sistemas Operativos 2 - USAC CUNOC - Segundo Semestre 2026
+  Autor: Brandon Gustavo Güinac Román (201931217)
+
+  El proyecto NO tiene dependencias externas: usa solamente la biblioteca estándar
+  de Java 17 (java.util.concurrent para la concurrencia y com.sun.net.httpserver
+  para el servidor web). Este pom solo sirve para compilar y empaquetar el .jar.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>gt.usac.cunoc</groupId>
+    <artifactId>redxela</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    <name>REDXela</name>
+    <description>Simulador concurrente del centro de distribución REDXela</description>
+
+    <properties>
+        <maven.compiler.release>17</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <build>
+        <finalName>redxela</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+            </plugin>
+            <!-- Jar ejecutable: java -jar target/redxela.jar -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>gt.usac.cunoc.redxela.RedXela</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
